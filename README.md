@@ -69,3 +69,7 @@ gradlew.bat build
 ## 许可证
 
 本项目使用 MIT License，详见 `LICENSE`。
+
+## AI 生成声明
+
+本项目的代码与文档主要由 AI 辅助生成与整理，并由仓库维护者审核、调整与发布。
