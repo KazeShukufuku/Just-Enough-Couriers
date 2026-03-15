@@ -10,23 +10,29 @@ import mezz.jei.api.recipe.transfer.IRecipeTransferError;
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper;
 import mezz.jei.api.recipe.transfer.IUniversalRecipeTransferHandler;
 import net.minecraft.network.chat.Component;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.level.Level;
 import net.minecraftforge.items.ItemStackHandler;
 import net.minecraftforge.items.wrapper.RecipeWrapper;
+import java.util.Optional;
+import ru.zznty.create_factory_abstractions.api.generic.stack.GenericIngredient;
 import ru.zznty.create_factory_abstractions.api.generic.stack.GenericStack;
 import ru.zznty.create_factory_abstractions.compat.jei.IngredientTransfer;
 import ru.zznty.create_factory_abstractions.compat.jei.TransferOperationsResult;
+import ru.zznty.create_factory_abstractions.generic.key.item.ItemKey;
 import ru.zznty.create_factory_abstractions.generic.support.CraftableGenericStack;
 import ru.zznty.create_factory_abstractions.generic.support.GenericInventorySummary;
 
+import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
 
 public class PortableStockTickerTransferHandler implements IUniversalRecipeTransferHandler<PortableStockTickerMenu> {
     private static final int MAX_INGREDIENT_SLOTS = 9;
@@ -50,7 +56,7 @@ public class PortableStockTickerTransferHandler implements IUniversalRecipeTrans
     }
 
     @Override
-    public IRecipeTransferError transferRecipe(PortableStockTickerMenu menu, Object recipeObject, IRecipeSlotsView recipeSlots, Player player, boolean maxTransfer, boolean doTransfer) {
+    public IRecipeTransferError transferRecipe(@Nonnull PortableStockTickerMenu menu, @Nonnull Object recipeObject, @Nonnull IRecipeSlotsView recipeSlots, @Nonnull Player player, boolean maxTransfer, boolean doTransfer) {
         if (!(recipeObject instanceof Recipe<?> recipe)) {
             return null;
         }
@@ -68,12 +74,12 @@ public class PortableStockTickerTransferHandler implements IUniversalRecipeTrans
             return transferHelper.createInternalError();
         }
         if (screen.itemsToOrder().size() >= MAX_INGREDIENT_SLOTS) {
-            return transferHelper.createUserErrorWithTooltip(Component.translatable("create.gui.stock_keeper.slots_full"));
+            return transferHelper.createUserErrorWithTooltip(Objects.requireNonNull(Component.translatable("create.gui.stock_keeper.slots_full")));
         }
 
         for (CraftableGenericStack existing : screen.recipesToOrder()) {
             if (existing.asStack().recipe == recipe) {
-                return transferHelper.createUserErrorWithTooltip(Component.translatable("create.gui.stock_keeper.already_ordering_recipe"));
+                return transferHelper.createUserErrorWithTooltip(Objects.requireNonNull(Component.translatable("create.gui.stock_keeper.already_ordering_recipe")));
             }
         }
 
@@ -98,8 +104,8 @@ public class PortableStockTickerTransferHandler implements IUniversalRecipeTrans
 
         if (!transferOperations.missingItems().isEmpty()) {
             return transferHelper.createUserErrorForMissingSlots(
-                    Component.translatable("create.gui.stock_keeper.not_in_stock"),
-                    transferOperations.missingItems()
+                    Objects.requireNonNull(Component.translatable("create.gui.stock_keeper.not_in_stock")),
+                    Objects.requireNonNull(transferOperations.missingItems())
             );
         }
 
@@ -107,12 +113,12 @@ public class PortableStockTickerTransferHandler implements IUniversalRecipeTrans
             return null;
         }
 
-        ItemStack recipeResult = recipe.getResultItem(player.level().registryAccess());
+        ItemStack recipeResult = recipe.getResultItem(requireRegistryAccess(player.level()));
         if (recipeResult.isEmpty()) {
-            return transferHelper.createUserErrorWithTooltip(Component.translatable("create.gui.stock_keeper.recipe_result_empty"));
+            return transferHelper.createUserErrorWithTooltip(Objects.requireNonNull(Component.translatable("create.gui.stock_keeper.recipe_result_empty")));
         }
 
-        CraftableGenericStack craftable = CraftableGenericStack.of(new CraftableBigItemStack(recipeResult, recipe));
+        CraftableGenericStack craftable = new PortableCompatibleCraftableStack(recipeResult.copy(), recipe);
         screen.recipesToOrder().add(craftable);
         if (screen.searchBox != null) {
             screen.searchBox.setValue("");
@@ -124,4 +130,64 @@ public class PortableStockTickerTransferHandler implements IUniversalRecipeTrans
         return null;
     }
 
+    private static @Nonnull RegistryAccess requireRegistryAccess(Level level) {
+        RegistryAccess registryAccess = level.registryAccess();
+        if (registryAccess == null) {
+            throw new IllegalStateException("RegistryAccess is unexpectedly null");
+        }
+        return registryAccess;
+    }
+
+    private static class PortableCompatibleCraftableStack extends CraftableBigItemStack implements CraftableGenericStack {
+        public PortableCompatibleCraftableStack(ItemStack stack, Recipe<?> recipe) {
+            super(stack, recipe);
+        }
+
+        @Override
+        public List<GenericIngredient> ingredients() {
+            return GenericIngredient.ofRecipe(recipe);
+        }
+
+        @Override
+        public List<GenericStack> results(RegistryAccess registryAccess) {
+            return List.of(GenericStack.wrap(recipe.getResultItem(requireRegistryAccess(registryAccess))));
+        }
+
+        @Override
+        public int outputCount(Level level) {
+            return getOutputCount(level);
+        }
+
+        @Override
+        public CraftableBigItemStack asStack() {
+            return this;
+        }
+
+        @Override
+        public GenericStack get() {
+            return GenericStack.wrap(stack).withAmount(count);
+        }
+
+        @Override
+        public void set(GenericStack genericStack) {
+            if (genericStack.key() instanceof ItemKey itemKey) {
+                this.stack = itemKey.stack();
+            } else {
+                this.stack = ItemStack.EMPTY;
+            }
+            this.count = genericStack.amount();
+        }
+
+        @Override
+        public void setAmount(int amount) {
+            this.count = amount;
+        }
+    }
+
+    private static @Nonnull RegistryAccess requireRegistryAccess(RegistryAccess registryAccess) {
+        if (registryAccess == null) {
+            throw new IllegalStateException("RegistryAccess is unexpectedly null");
+        }
+        return registryAccess;
+    }
 }
