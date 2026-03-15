@@ -1,0 +1,129 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:[6.0,6.2)'
+    }
+}
+
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+}
+
+apply plugin: 'net.minecraftforge.gradle'
+
+group = mod_group_id
+version = mod_version
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel: 'official', version: minecraft_version
+
+    copyIdeResources = true
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        server {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+repositories {
+    maven {
+        url = 'https://cursemaven.com'
+        content { includeGroup 'curse.maven' }
+    }
+    maven { url = 'https://dl.zznty.ru/maven' }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // Create 6.0.8 for mc1.20.1: project 328085, file 7178761
+    compileOnly fg.deobf("curse.maven:create-328085:7178761")
+
+    // CM Package Couriers: project 1319223, file 7738361
+    compileOnly fg.deobf("curse.maven:cmpackagecouriers-1319223:7738361")
+
+    // JEI: project 238222, file 7391695
+    compileOnly fg.deobf("curse.maven:jei-238222:7391695")
+
+    // Create Factory Abstractions from author's public maven
+    compileOnly "ru.zznty:create_factory_abstractions-${minecraft_version}:${cfa_version}"
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            mod_id          : mod_id,
+            mod_name        : mod_name,
+            mod_version     : mod_version,
+            mod_authors     : mod_authors,
+            mod_description : mod_description
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    reproducibleFileOrder = true
+    preserveFileTimestamps = false
+}
+
+tasks.withType(Jar).configureEach {
+    manifest {
+        attributes(
+                'Implementation-Title': mod_name,
+                'Implementation-Version': mod_version,
+                'Implementation-Vendor': mod_authors
+        )
+    }
+
+    doFirst {
+        def volatileManifestKeys = [
+                'Build-Time',
+                'Build-Timestamp',
+                'Timestamp',
+                'Build-Date',
+                'Implementation-Timestamp'
+        ]
+        volatileManifestKeys.each { key ->
+            manifest.attributes.remove(key)
+        }
+    }
+}
