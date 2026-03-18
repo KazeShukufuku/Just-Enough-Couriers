@@ -385,7 +385,12 @@ public class PortableStockTickerTransferHandler implements IUniversalRecipeTrans
 
         ItemStack stack = new ItemStack(tankItem);
         CompoundTag tag = stack.getOrCreateTag();
-        tag.put("Fluid", fluidStack.writeToNBT(new CompoundTag()));
+        CompoundTag fluidTag = fluidStack.writeToNBT(new CompoundTag());
+        if (fluidTag == null) {
+            return GenericStack.EMPTY;
+        }
+
+        tag.put("Fluid", fluidTag);
         tag.putBoolean("Virtual", true);
         tag.remove("Identity");
         return GenericStack.wrap(stack).withAmount(Math.max(1, fluidStack.getAmount()));
